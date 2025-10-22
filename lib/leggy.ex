@@ -98,37 +98,63 @@ defmodule Leggy do
 
       @doc """
       Cria a exchange e fila definidas no schema, de forma **idempotente**.
-
       - Se já existirem, nada é sobrescrito.
       - Se não existirem, são criadas automaticamente.
       """
       def prepare(schema_mod) when is_atom(schema_mod) do
+        IO.inspect(schema_mod, label: "Preparing schema 3")
+
         with_channel(fn ch ->
           exchange = schema_mod.__leggy_exchange__()
           queue = schema_mod.__leggy_queue__()
 
-          # Tenta verificar se já existem (modo passive)
-          exchange_exists? =
-            case AMQP.Exchange.declare(ch, exchange, :direct, passive: true) do
-              :ok -> true
-              {:error, _} -> false
-            end
+          # Função auxiliar para checar se existe, usando canal temporário
+          check_exists = fn kind, name ->
+            case AMQP.Channel.open(ch.conn) do
+              {:ok, tmp_ch} ->
+                exists =
+                  case kind do
+                    :exchange ->
+                      try do
+                        AMQP.Exchange.declare(tmp_ch, name, :direct, passive: true)
+                        true
+                      catch
+                        :exit, _ -> false
+                      end
 
-          queue_exists? =
-            case AMQP.Queue.declare(ch, queue, passive: true) do
-              {:ok, _} -> true
-              {:error, _} -> false
+                    :queue ->
+                      try do
+                        AMQP.Queue.declare(tmp_ch, name, passive: true)
+                        true
+                      catch
+                        :exit, _ -> false
+                      end
+                  end
+
+                # só tenta fechar se o canal ainda estiver vivo
+                if Process.alive?(tmp_ch.pid), do: AMQP.Channel.close(tmp_ch)
+                exists
+
+              _ ->
+                false
             end
+          end
+
+          exchange_exists? = check_exists.(:exchange, exchange)
+          queue_exists? = check_exists.(:queue, queue)
 
           unless exchange_exists? do
+            IO.puts("Creating exchange #{exchange}...")
             :ok = AMQP.Exchange.declare(ch, exchange, :direct, durable: true)
           end
 
           unless queue_exists? do
+            IO.puts("Creating queue #{queue}...")
             {:ok, _} = AMQP.Queue.declare(ch, queue, durable: true)
           end
 
           :ok = AMQP.Queue.bind(ch, queue, exchange, routing_key: queue)
+          IO.puts("Exchange and queue prepared successfully!")
           :ok
         end)
       end
