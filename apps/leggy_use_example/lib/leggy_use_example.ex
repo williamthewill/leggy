@@ -1,18 +1,35 @@
 defmodule LeggyUseExample do
-  @moduledoc """
-  Documentation for `LeggyUseExample`.
-  """
+  use Leggy,
+    host: "localhost",
+    username: "guest",
+    password: "guest",
+    pool_size: 4
 
-  @doc """
-  Hello world.
+  alias LeggyUseExample.Schemas.RabbitSchema
 
-  ## Examples
+  def prepare, do: prepare(RabbitSchema)
 
-      iex> LeggyUseExample.hello()
-      :world
+  def producer do
+    {:ok, msg} =
+      cast(RabbitSchema, %{
+        user: "r2d2",
+        ttl: 5,
+        valid?: true,
+        requested_at: DateTime.utc_now()
+      })
 
-  """
-  def hello do
-    :world
+    publish(msg)
+  end
+
+  def consumer do
+    case get(RabbitSchema) do
+      {:ok, struct} ->
+        IO.inspect(struct, label: "Received struct")
+        :ok
+
+      {:error, reason} ->
+        IO.puts("Failed to get message: #{inspect(reason)}")
+        :error
+    end
   end
 end
