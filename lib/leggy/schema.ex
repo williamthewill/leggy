@@ -52,9 +52,6 @@ defmodule Leggy.Schema do
   Define um campo do schema com nome e tipo.
   """
   defmacro field(name, type) when is_atom(name) and is_atom(type) do
-    IO.inspect(name)
-    IO.inspect(type)
-
     quote do
       @leggy_fields {unquote(name), unquote(type)}
     end
