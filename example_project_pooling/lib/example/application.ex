@@ -1,11 +1,9 @@
 defmodule Example.Application do
-  @moduledoc false
   use Application
 
   def start(_type, _args) do
     children = [
-      # Inicia automaticamente o pool do Leggy
-      {Example, []}
+      {Example.LeggyRepo, []},
     ]
 
     opts = [strategy: :one_for_one, name: Example.Supervisor]
