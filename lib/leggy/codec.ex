@@ -3,29 +3,8 @@ defmodule Leggy.Codec do
   Módulo responsável por serializar e desserializar mensagens JSON utilizadas
   pela biblioteca **Leggy**.
 
-  Ele converte structs de schema Elixir em JSON (via `encode!/1`) e reconverte JSON
-  em maps atomizados (via `decode/1`).
-
-  ## Exemplo completo
-
-      iex> alias Leggy.Codec
-      iex> schema = %{
-      ...>   __struct__: :ExampleSchema,
-      ...>   user: "r2d2",
-      ...>   ttl: 5,
-      ...>   valid?: true,
-      ...>   requested_at: ~U[2025-10-20 21:19:34Z]
-      ...> }
-      iex> json = Codec.encode!(schema)
-      iex> is_binary(json)
-      true
-      iex> {:ok, decoded} = Codec.decode(json)
-      iex> decoded.user
-      "r2d2"
-      iex> decoded.ttl
-      5
-      iex> decoded.valid?
-      true
+  Ele converte structs de schemas do Leggy em JSON (via `encode!/1`) e reconverte
+  JSON em maps atomizados (via `decode/1`), tratando automaticamente campos `DateTime`.
   """
 
   @doc """

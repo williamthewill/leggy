@@ -20,16 +20,19 @@ defmodule Leggy.Message do
       {:ok, map} ->
         case Leggy.Validator.cast(schema_mod, map) do
           {:ok, struct} ->
+            # tudo certo → confirma a mensagem
             :ok = AMQP.Basic.ack(ch, meta.delivery_tag)
             {:ok, struct}
 
           {:error, reason} ->
-            :ok = AMQP.Basic.reject(ch, meta.delivery_tag, requeue: true)
+            # cast falhou → rejeita a mensagem com requeue. Não volta para a fila original, pois foi configurada DLX
+            :ok = AMQP.Basic.reject(ch, meta.delivery_tag, requeue: false)
             {:error, {:cast_failed, reason}}
         end
 
       {:error, decode_err} ->
-        :ok = AMQP.Basic.reject(ch, meta.delivery_tag, requeue: true)
+        # decode falhou → rejeita a mensagem com requeue. Não volta para a fila original, pois foi configurada DLX
+        :ok = AMQP.Basic.reject(ch, meta.delivery_tag, requeue: false)
         {:error, {:decode_failed, decode_err}}
     end
   end

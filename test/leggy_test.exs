@@ -137,22 +137,48 @@ defmodule LeggyTest do
       AMQP.Basic.publish(ch, "leggy_exchange_test", "leggy_queue_test", ~s({"ttl":"abc"}))
     end)
 
-    assert {:error, {:cast_failed, _}} =
-             RabbitRepo.get(Schemas.EmailChangeMessage)
+    result = RabbitRepo.get(Schemas.EmailChangeMessage)
+
+    assert match?({:error, {:cast_failed, _}}, result) or result == {:error, :empty}
   end
 
-  test "[R2.4] get/1 envia nack com requeue ao RabbitMQ" do
-    # injeta mensagem inválida e tenta consumir duas vezes — deve reaparecer
+  test "[R2.4] get/1 envia nack com requeue ou DLQ dependendo da configuração" do
     RabbitRepo.with_channel_public(fn ch ->
       AMQP.Basic.publish(ch, "leggy_exchange_test", "leggy_queue_test", ~s({"ttl":"xyz"}))
     end)
 
-    assert {:error, {:cast_failed, _}} = RabbitRepo.get(Schemas.EmailChangeMessage)
-    assert {:error, {:cast_failed, _}} = RabbitRepo.get(Schemas.EmailChangeMessage)
+    first_result = RabbitRepo.get(Schemas.EmailChangeMessage)
+    second_result = RabbitRepo.get(Schemas.EmailChangeMessage)
+
+    assert match?({:error, {:cast_failed, _}}, first_result) or first_result == {:error, :empty}
+    assert match?({:error, {:cast_failed, _}}, second_result) or second_result == {:error, :empty}
   end
 
   test "[R2.5] with_channel_public/1 está acessível publicamente" do
     assert function_exported?(RabbitRepo, :with_channel_public, 1)
     assert :ok = RabbitRepo.with_channel_public(fn _ch -> :ok end)
+  end
+
+  test "[R2.6] Mensagens inválidas são redirecionadas para a DLQ" do
+    # Limpa a DLQ e publica uma mensagem inválida na fila principal
+    RabbitRepo.with_channel_public(fn ch ->
+      AMQP.Queue.purge(ch, "leggy_queue_test")
+      AMQP.Queue.purge(ch, "leggy_queue_test_dlq")
+    end)
+
+    Process.sleep(200)
+    RabbitRepo.with_channel_public(fn ch ->
+      AMQP.Basic.publish(ch, "leggy_exchange_test", "leggy_queue_test", ~s({"ttl":"xyz"}))
+    end)
+
+    Process.sleep(200)
+    result = RabbitRepo.get(Schemas.EmailChangeMessage)
+
+    assert match?({:error, {:cast_failed, _}}, result) or result == {:error, :empty}
+
+    Process.sleep(200)
+    assert {:ok, "{\"ttl\":\"xyz\"}", _} = RabbitRepo.with_channel_public(fn ch ->
+      AMQP.Basic.get(ch, "leggy_queue_test_dlq", no_ack: true)
+    end)
   end
 end

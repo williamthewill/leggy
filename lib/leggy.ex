@@ -1,165 +1,107 @@
 defmodule Leggy do
   @moduledoc """
-  # Leggy — Mensageria simples, tipada e resiliente com RabbitMQ em Elixir 📨
+  **Leggy** — Mensageria tipada, resiliente e simples com RabbitMQ em Elixir 📨
 
-  O **Leggy** é uma biblioteca que abstrai a comunicação com o RabbitMQ usando a
-  biblioteca oficial [`amqp`](https://hex.pm/packages/amqp), oferecendo uma
-  camada de tipagem e resiliência de conexão para publicação e consumo de
-  mensagens.
+  Leggy é uma biblioteca que abstrai o consumo e publicação de mensagens no RabbitMQ,
+  trazendo uma API tipada, validada e segura, inspirada em conceitos de *Data Schema*
+  e *Repository Pattern*.
 
-  Ela foi projetada para **simplicidade, segurança e previsibilidade**, evitando
-  boilerplate e centralizando o controle de canais, schemas e reconexões.
-
-  ---
-
-  ## ✨ Recursos principais
-
-  - **Schemas tipados** (`use Leggy.Schema`)
-  Define contratos de mensagens declarativos, com conversão automática de tipos
-  e validação de campos obrigatórios.
-
-  - **Publicação e leitura simplificadas** (`publish/1` e `get/1`)
-  Basta trabalhar com structs Elixir — o encode/decode é feito de forma
-  transparente usando JSON.
-
-  - **Pool de canais AMQP resiliente** (`Leggy.ChannelPool`)
-  Gerencia múltiplos canais concorrentes, com reconexão automática em caso de
-  falha de rede ou reinício do RabbitMQ.
-
-  - **API declarativa e imutável**
-  A macro `use Leggy` gera automaticamente toda a infraestrutura de conexão,
-  tornando o uso idêntico a um *repository pattern*.
+  Com `Leggy`, você pode definir contratos de mensagens, validar tipos automaticamente,
+  publicar eventos, e processar mensagens com consumidores resilientes — tudo com
+  poucas linhas de código.
 
   ---
 
-  ## ⚙️ Exemplo de uso básico
+  ## 🚀 Principais recursos
 
-  ```elixir
-  defmodule MyApp.RabbitRepo do
-  use Leggy,
-    host: "localhost",
-    username: "guest",
-    password: "guest",
-    pool_size: 4
-  end
-
-  defmodule MyApp.Schemas.EmailChangeMessage do
-  use Leggy.Schema
-
-  schema "user_exchange", "email_queue" do
-    field :user, :string
-    field :ttl, :integer
-    field :valid?, :boolean
-    field :requested_at, :datetime
-  end
-  end
-
-  # Inicializa o pool e cria os recursos no RabbitMQ
-  MyApp.RabbitRepo.start_link()
-  MyApp.RabbitRepo.prepare(MyApp.Schemas.EmailChangeMessage)
-
-  # Publica uma mensagem
-  {:ok, msg} =
-  MyApp.RabbitRepo.cast(MyApp.Schemas.EmailChangeMessage, %{
-    user: "r2d2",
-    ttl: 10,
-    valid?: true,
-    requested_at: DateTime.utc_now()
-  })
-
-  MyApp.RabbitRepo.publish(msg)
-
-  # Consome uma mensagem
-  MyApp.RabbitRepo.get(MyApp.Schemas.EmailChangeMessage)
-  ```
+  - ✅ **Schemas tipados** (`use Leggy.Schema`) — contratos explícitos de mensagens.
+  - 🧩 **Validação automática** via `Leggy.Validator.cast/2`.
+  - 📤 **Publicação simples** com `publish/1` (aceita structs do schema).
+  - 📥 **Consumo contínuo** com `Leggy.Consumer`, usando handlers personalizados.
+  - 🌀 **Pool resiliente de canais** com reconexão e isolamento de falhas.
+  - ⚙️ **Configuração declarativa** via macro `__using__/1`.
+  - 🔁 **Funções utilitárias** como `prepare/1` (idempotente) e `get/1` (consumo manual).
 
   ---
 
-  ## 🔧 Configuração (opções aceitas por `use Leggy`)
+  ## 🧠 Exemplo de uso
 
-  | Opção | Tipo | Padrão | Descrição |
-  |-------|------|--------|------------|
-  | `:host` | `String.t` | **obrigatório** | Endereço do servidor RabbitMQ |
-  | `:username` | `String.t` | `"guest"` | Usuário de autenticação |
-  | `:password` | `String.t` | `"guest"` | Senha do usuário |
-  | `:port` | `integer` | `5672` | Porta AMQP |
-  | `:virtual_host` | `String.t` | `"/"` | Virtual host (vhost) |
-  | `:pool_size` | `integer` | `4` | Número máximo de canais simultâneos |
-  | `:heartbeat` | `integer` | `10` | Intervalo de heartbeat em segundos |
-  | `:connection_name` | `String.t` ou `nil` | `nil` | Nome identificador da conexão (visível no painel do RabbitMQ) |
+      defmodule MyApp.RabbitRepo do
+        use Leggy,
+          host: "localhost",
+          username: "guest",
+          password: "guest",
+          pool_size: 4
+      end
+
+      defmodule MyApp.Schemas.EmailMessage do
+        use Leggy.Schema
+
+        schema "email_exchange", "email_queue" do
+          field :user, :string
+          field :subject, :string
+          field :sent_at, :datetime
+        end
+      end
+
+      # Criação da exchange/queue
+      MyApp.RabbitRepo.prepare(MyApp.Schemas.EmailMessage)
+
+      # Criação e envio da mensagem
+      {:ok, msg} = MyApp.RabbitRepo.cast(MyApp.Schemas.EmailMessage, %{user: "r2d2", subject: "hi"})
+      MyApp.RabbitRepo.publish(msg)
 
   ---
 
-  ## 📚 API pública
+  ## ⚡ Consumo contínuo (Consumer)
+
+  O módulo `Leggy.Consumer` pode ser adicionado como worker supervisionado,
+  escutando a fila e processando mensagens automaticamente com um *handler*:
+
+      children = [
+        {MyApp.LeggyRepo, []},
+        {Leggy.Consumer, [MyApp.LeggyRepo, MyApp.Schemas.EmailMessage, &MyApp.Handler.handle_email/1]}
+      ]
+      Supervisor.start_link(children, strategy: :one_for_one)
+
+  ---
+
+  ## 🧩 API Pública
 
   | Função | Descrição |
   |--------|------------|
-  | `prepare(schema)` | Cria *exchange* e *queue* de forma **idempotente**. Se já existirem, nada é alterado. |
-  | `cast(schema, map)` | Valida e materializa um struct a partir de um mapa, convertendo tipos automaticamente. |
-  | `publish(struct)` | Publica uma mensagem JSON no RabbitMQ. |
-  | `get(schema)` | Recupera a próxima mensagem da fila e converte para o struct tipado. |
-  | `with_channel_public(fun)` | Executa uma função anônima recebendo um canal AMQP do pool (uso avançado). |
+  | `prepare(schema)` | Cria exchange e fila de forma idempotente |
+  | `cast(schema, data)` | Valida e transforma dados em struct do schema |
+  | `publish(struct)` | Publica struct no RabbitMQ em JSON |
+  | `get(schema)` | Recupera próxima mensagem da fila |
+  | `with_channel_public(fun)` | Executa callback com canal do pool |
+  | `Leggy.Consumer` | Worker contínuo para processar mensagens |
 
   ---
 
-  ## 🧠 Arquitetura interna
-
-  O `Leggy` mantém um **único processo de conexão AMQP**, gerenciado por
-  `Leggy.ChannelPool`.
-  Esse pool:
-
-  - Abre N canais de forma concorrente e segura.
-  - Mantém um `:queue` de canais disponíveis.
-  - Reabre canais que caírem automaticamente.
-  - Recria a conexão inteira em caso de `:DOWN` do servidor RabbitMQ.
-
-  Todas as operações (`publish`, `get`, `prepare`) utilizam `with_channel/1`, que
-  garante **checkout seguro e devolução automática** do canal, mesmo em caso de
-  erro ou exceção.
-
-  ---
-
-  ## 🧩 Estrutura modular
-
-  ```
-  Leggy/
-  ├── Leggy.Schema      # Macro para definir schemas tipados
-  ├── Leggy.Codec       # Encode/decode em JSON
-  ├── Leggy.Validator   # Validação e conversão de tipos
-  └── Leggy.ChannelPool # Pool de canais com reconexão automática
-  ```
-
-  ---
-
-  ## 🧰 Boas práticas
-
-  - Sempre declare **schemas estáveis** — evitar alterar nomes de exchange/queue
-  após produção.
-  - Prefira usar `prepare/1` na inicialização da aplicação (ex.: no `Application.start/2`).
-  - Trate erros de consumo (`{:error, {:cast_failed, reason}}`) logando e
-  monitorando requeues em Dead Letter Exchanges (DLX).
-  - Se for usar em alta escala, defina `connection_name` para identificar pools no painel RabbitMQ.
-
-  ---
-
-  ## 🧪 Teste local rápido
-
-  Você pode iniciar um RabbitMQ via Docker:
-
-  ```bash
-  docker run -d --hostname leggy-rabbit --name leggy-rabbit   -p 5672:5672 -p 15672:15672 rabbitmq:3-management
-  ```
-
-  Acesse o painel em [http://localhost:15672](http://localhost:15672)
-  Usuário/senha padrão: `guest` / `guest`
-
-  ---
-
-  ## 📜 Licença
-
-  **MIT License** © 2025 [Infleet OpenSource](https://github.com/williamthewill/leggy)
+  MIT License © 2025 — Projeto **Leggy** (by Infleet OpenSource)
   """
 
+  @doc """
+  Macro para definir um módulo *Repository* conectado ao RabbitMQ.
+  Aceita as seguintes opções:
+  - :host (obrigatório)
+  - :username (default "guest")
+  - :password (default "guest")
+  - :port (default 5672)
+  - :virtual_host (default "/")
+  - :pool_size (default 4)
+  - :heartbeat (default 10)
+  - :connection_name (default nil)
+  Exemplo de uso:
+    defmodule MyApp.RabbitRepo do
+      use Leggy,
+        host: "localhost",
+        username: "guest",
+        password: "guest",
+        pool_size: 4
+    end
+  """
   defmacro __using__(opts) do
     quote bind_quoted: [opts: opts] do
       host = Keyword.fetch!(opts, :host)
@@ -206,12 +148,10 @@ defmodule Leggy do
       - Se já existirem, nada é sobrescrito.
       - Se não existirem, são criadas automaticamente.
       """
-      def prepare(schema_mod) when is_atom(schema_mod) do
-        IO.inspect(schema_mod, label: "Preparing schema 3")
-
+      def prepare(schema_module) when is_atom(schema_module) do
         with_channel(fn ch ->
-          exchange = schema_mod.__leggy_exchange__()
-          queue = schema_mod.__leggy_queue__()
+          exchange = schema_module.__leggy_exchange__()
+          queue = schema_module.__leggy_queue__()
 
           # Função auxiliar para checar se existe, usando canal temporário
           check_exists = fn kind, name ->
@@ -221,6 +161,7 @@ defmodule Leggy do
                   case kind do
                     :exchange ->
                       try do
+                        # Tenta declarar de forma passiva(sem criar)
                         AMQP.Exchange.declare(tmp_ch, name, :direct, passive: true)
                         true
                       catch
@@ -229,6 +170,7 @@ defmodule Leggy do
 
                     :queue ->
                       try do
+                        # Tenta declarar de forma passiva(sem criar)
                         AMQP.Queue.declare(tmp_ch, name, passive: true)
                         true
                       catch
@@ -250,14 +192,33 @@ defmodule Leggy do
 
           unless exchange_exists? do
             IO.puts("Creating exchange #{exchange}...")
+            # Cria exchange durável
             :ok = AMQP.Exchange.declare(ch, exchange, :direct, durable: true)
+            # Cria DLX associada. Envia mensagens rejeitadas para DLQ(dead-letter queue)
+            :ok = AMQP.Exchange.declare(ch, "#{exchange}_dlx", :direct, durable: true)
           end
 
           unless queue_exists? do
             IO.puts("Creating queue #{queue}...")
-            {:ok, _} = AMQP.Queue.declare(ch, queue, durable: true)
+
+            {:ok, _} =
+              AMQP.Queue.declare(ch, queue,
+                durable: true,
+                arguments: [
+                  {"x-dead-letter-exchange", :longstr, "#{exchange}_dlx"},
+                  {"x-dead-letter-routing-key", :longstr, "#{queue}_dlq"}
+                ]
+              )
+
+            # Cria fila durável para DLQ
+            {:ok, _} = AMQP.Queue.declare(ch, "#{queue}_dlq", durable: true)
+
+            # Vincula a DLQ à exchange de dead letters
+            :ok =
+              AMQP.Queue.bind(ch, "#{queue}_dlq", "#{exchange}_dlx", routing_key: "#{queue}_dlq")
           end
 
+          # Vincula a fila à exchange
           :ok = AMQP.Queue.bind(ch, queue, exchange, routing_key: queue)
           IO.puts("Exchange and queue prepared successfully!")
           :ok
@@ -265,15 +226,16 @@ defmodule Leggy do
       end
 
       @doc "Valida e materializa struct a partir de map/keyword segundo o schema."
-      def cast(schema_mod, data) when is_atom(schema_mod) and (is_map(data) or is_list(data)) do
-        Leggy.Validator.cast(schema_mod, data)
+      def cast(schema_module, data)
+          when is_atom(schema_module) and (is_map(data) or is_list(data)) do
+        Leggy.Validator.cast(schema_module, data)
       end
 
       @doc "Publica a struct gerada pelo schema em JSON na exchange/queue definidas."
       def publish(struct) when is_map(struct) do
-        schema_mod = struct.__struct__
-        exchange = schema_mod.__leggy_exchange__()
-        queue = schema_mod.__leggy_queue__()
+        schema_module = struct.__struct__
+        exchange = schema_module.__leggy_exchange__()
+        queue = schema_module.__leggy_queue__()
 
         payload = Leggy.Codec.encode!(struct)
 
@@ -296,16 +258,17 @@ defmodule Leggy do
 
       Em caso de erro, um *nack* com `requeue: true` é enviado.
       """
-      def get(schema_mod) when is_atom(schema_mod) do
-        queue = schema_mod.__leggy_queue__()
+      def get(schema_module) when is_atom(schema_module) do
+        queue = schema_module.__leggy_queue__()
 
         with_channel(fn ch ->
+          # Desabilita o ack automático, para controlar manualmente o ack/nack em Leggy.Message
           case AMQP.Basic.get(ch, queue, no_ack: false) do
             {:empty, _meta} ->
               {:error, :empty}
 
             {:ok, payload, meta} ->
-              Leggy.Message.process(schema_mod, ch, payload, meta)
+              Leggy.Message.process(schema_module, ch, payload, meta)
           end
         end)
       end
