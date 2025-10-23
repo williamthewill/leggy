@@ -100,7 +100,6 @@ defmodule Leggy.ChannelPool do
         {:reply, {:ok, %Ref{id: make_ref(), channel: ch}}, %{state | pool: pool2}}
 
       {:empty, _} ->
-        # espera
         {:noreply, enqueue_waiter(state, from)}
     end
   end

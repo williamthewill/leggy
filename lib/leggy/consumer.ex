@@ -3,8 +3,9 @@ defmodule Leggy.Consumer do
   `Leggy.Consumer` — consumidor contínuo e resiliente de mensagens RabbitMQ,
   totalmente integrado à infraestrutura do Leggy.
 
-  Reutiliza o `Leggy.ChannelPool` e a função interna `Leggy.Message.process/3`
-  para processar mensagens da fila de forma consistente com `Leggy.get/1`.
+  Reutiliza o `Leggy.ChannelPool` e a função interna `process/3` do módulo `Leggy.Message`
+  para processar mensagens da fila de forma consistente com a função `get/1`
+  disponível nos módulos que usam `Leggy`.
 
   Pode ser iniciado manualmente via:
       Leggy.Consumer.start_link(MyRepo, MySchema, &MyHandler.handle/1)
@@ -25,13 +26,27 @@ defmodule Leggy.Consumer do
     repo.with_channel_public(fn ch ->
       queue = schema_mod.__leggy_queue__()
 
-      # Garante que a fila exista e é durável
-      {:ok, _} = AMQP.Queue.declare(ch, queue, durable: true)
-      {:ok, _consumer_tag} = AMQP.Basic.consume(ch, queue, nil, no_ack: false)
-
-      IO.puts("🎧 [Leggy.Consumer] Escutando fila #{queue}...")
-      loop(ch, handler_fun, schema_mod)
+      if queue_exists?(ch, queue) do
+        {:ok, _consumer_tag} = AMQP.Basic.consume(ch, queue, nil, no_ack: false)
+        IO.puts("🎧 [Leggy.Consumer] Escutando fila existente #{queue}...")
+        loop(ch, handler_fun, schema_mod)
+      else
+        IO.puts("💥 Fila #{queue} não existe — aguardando criação...")
+        :timer.sleep(5000)
+        listen(repo, schema_mod, handler_fun)
+      end
     end)
+  end
+
+  defp queue_exists?(%AMQP.Channel{pid: pid}, queue) do
+    try do
+      # Faz uma declaração passiva real (não cria, só verifica)
+      :amqp_channel.call(pid, {:"queue.declare", 0, queue, true, false, false, false, false, []})
+      true
+    catch
+      :exit, {:server_initiated_close, _code, _reason} ->
+        false
+    end
   end
 
   defp loop(ch, handler_fun, schema_mod) do

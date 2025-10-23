@@ -1,85 +1,89 @@
 defmodule Leggy do
   @moduledoc """
-  **Leggy** — Mensageria tipada, resiliente e simples com RabbitMQ em Elixir 📨
+  **Leggy** - Mensageria tipada, resiliente e simples com RabbitMQ em Elixir
 
-  Leggy é uma biblioteca que abstrai o consumo e publicação de mensagens no RabbitMQ,
-  trazendo uma API tipada, validada e segura, inspirada em conceitos de *Data Schema*
-  e *Repository Pattern*.
+  Leggy e uma biblioteca que abstrai o consumo e publicacao de mensagens no RabbitMQ,
+  trazendo uma API tipada, validada e segura, inspirada em conceitos de Data Schema
+  e Repository Pattern.
 
-  Com `Leggy`, você pode definir contratos de mensagens, validar tipos automaticamente,
-  publicar eventos, e processar mensagens com consumidores resilientes — tudo com
-  poucas linhas de código.
-
-  ---
-
-  ## 🚀 Principais recursos
-
-  - ✅ **Schemas tipados** (`use Leggy.Schema`) — contratos explícitos de mensagens.
-  - 🧩 **Validação automática** via `Leggy.Validator.cast/2`.
-  - 📤 **Publicação simples** com `publish/1` (aceita structs do schema).
-  - 📥 **Consumo contínuo** com `Leggy.Consumer`, usando handlers personalizados.
-  - 🌀 **Pool resiliente de canais** com reconexão e isolamento de falhas.
-  - ⚙️ **Configuração declarativa** via macro `__using__/1`.
-  - 🔁 **Funções utilitárias** como `prepare/1` (idempotente) e `get/1` (consumo manual).
+  Com `Leggy`, voce pode definir contratos de mensagens, validar tipos automaticamente,
+  publicar eventos e processar mensagens com consumidores resilientes - tudo com
+  poucas linhas de codigo.
 
   ---
 
-  ## 🧠 Exemplo de uso
+  ## Principais recursos
 
-      defmodule MyApp.RabbitRepo do
-        use Leggy,
-          host: "localhost",
-          username: "guest",
-          password: "guest",
-          pool_size: 4
-      end
-
-      defmodule MyApp.Schemas.EmailMessage do
-        use Leggy.Schema
-
-        schema "email_exchange", "email_queue" do
-          field :user, :string
-          field :subject, :string
-          field :sent_at, :datetime
-        end
-      end
-
-      # Criação da exchange/queue
-      MyApp.RabbitRepo.prepare(MyApp.Schemas.EmailMessage)
-
-      # Criação e envio da mensagem
-      {:ok, msg} = MyApp.RabbitRepo.cast(MyApp.Schemas.EmailMessage, %{user: "r2d2", subject: "hi"})
-      MyApp.RabbitRepo.publish(msg)
+  - Schemas tipados (`use Leggy.Schema`) - contratos explicitos de mensagens.
+  - Validacao automatica via `Leggy.Validator.cast/2`.
+  - Publicacao simples com `publish/1` (aceita structs do schema).
+  - Consumo continuo com `Leggy.Consumer`, usando handlers personalizados.
+  - Pool resiliente de canais com reconexao e isolamento de falhas.
+  - Configuracao declarativa via macro `__using__/1`.
+  - Funcoes utilitarias como `prepare/1` (idempotente) e `get/1` (modo polling manual).
 
   ---
 
-  ## ⚡ Consumo contínuo (Consumer)
+  ## Exemplo de uso
 
-  O módulo `Leggy.Consumer` pode ser adicionado como worker supervisionado,
-  escutando a fila e processando mensagens automaticamente com um *handler*:
+  ```elixir
+  defmodule MyApp.RabbitRepo do
+    use Leggy,
+      host: "localhost",
+      username: "guest",
+      password: "guest",
+      pool_size: 4
+  end
 
-      children = [
-        {MyApp.LeggyRepo, []},
-        {Leggy.Consumer, [MyApp.LeggyRepo, MyApp.Schemas.EmailMessage, &MyApp.Handler.handle_email/1]}
-      ]
-      Supervisor.start_link(children, strategy: :one_for_one)
+  defmodule MyApp.Schemas.EmailMessage do
+    use Leggy.Schema
+
+    schema "email_exchange", "email_queue" do
+      field :user, :string
+      field :subject, :string
+      field :sent_at, :datetime
+    end
+  end
+
+  # Criacao da exchange/queue
+  MyApp.RabbitRepo.prepare(MyApp.Schemas.EmailMessage)
+
+  # Criacao e envio da mensagem
+  {:ok, msg} = MyApp.RabbitRepo.cast(MyApp.Schemas.EmailMessage, %{user: "r2d2", subject: "hi"})
+  MyApp.RabbitRepo.publish(msg)
+  ```
 
   ---
 
-  ## 🧩 API Pública
+  ## Consumo continuo (Consumer)
 
-  | Função | Descrição |
+  O modulo `Leggy.Consumer` pode ser adicionado como worker supervisionado,
+  escutando a fila e processando mensagens automaticamente com um handler:
+
+  ```elixir
+  children = [
+    {MyApp.LeggyRepo, []},
+    {Leggy.Consumer, [MyApp.LeggyRepo, MyApp.Schemas.EmailMessage, &MyApp.Handler.handle_email/1]}
+  ]
+  Supervisor.start_link(children, strategy: :one_for_one)
+  ```
+
+  ---
+
+  ## API Publica
+
+  | Funcao | Descricao |
   |--------|------------|
   | `prepare(schema)` | Cria exchange e fila de forma idempotente |
   | `cast(schema, data)` | Valida e transforma dados em struct do schema |
   | `publish(struct)` | Publica struct no RabbitMQ em JSON |
-  | `get(schema)` | Recupera próxima mensagem da fila |
+  | `get(schema)` | Recupera proxima mensagem da fila (definida no modulo que usa `Leggy`) |
   | `with_channel_public(fun)` | Executa callback com canal do pool |
-  | `Leggy.Consumer` | Worker contínuo para processar mensagens |
+  | `Leggy.Consumer` | Worker continuo para processar mensagens |
 
   ---
 
-  MIT License © 2025 — Projeto **Leggy** (by Infleet OpenSource)
+  MIT License 2025 - Projeto Leggy (by Infleet OpenSource)
   """
 
   @doc """
@@ -136,12 +140,12 @@ defmodule Leggy do
         }
       end
 
-      def start_link(),
-        do:
-          Supervisor.start_link([child_spec()],
-            strategy: :one_for_one,
-            name: Module.concat(__MODULE__, Supervisor)
-          )
+      def start_link() do
+        Supervisor.start_link([child_spec()],
+          strategy: :one_for_one,
+          name: Module.concat(__MODULE__, Supervisor)
+        )
+      end
 
       @doc """
       Cria a exchange e fila definidas no schema, de forma **idempotente**.

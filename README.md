@@ -1,4 +1,3 @@
-
 <div align="center">
 
 # 🐇 Leggy  
@@ -32,7 +31,7 @@ Adicione ao `mix.exs`:
 ```elixir
 def deps do
   [
-    {:leggy, "~> 0.1.0"},
+    {:leggy, git: "https://github.com/williamthewill/leggy.git", branch: "main"}
     {:amqp, "~> 3.3"},
     {:jason, "~> 1.4"}
   ]
@@ -98,6 +97,23 @@ MyApp.RabbitRepo.get(MyApp.Schemas.EmailChangeMessage)
 | `Leggy.ChannelPool` | Gerencia canais AMQP com reconexão |
 | `Leggy.Validator` | Faz o cast e validação de tipos |
 | `Leggy.Codec` | Codifica/decodifica mensagens JSON |
+
+---
+
+### 🔄 Entendendo o `pool_size`
+
+O parâmetro `pool_size` **não limita a quantidade de filas (queues)**,  
+mas sim **quantos canais AMQP simultâneos** o Leggy mantém abertos para comunicação.
+
+Esses canais são “faixas” de uma mesma conexão com o RabbitMQ —  
+reutilizadas automaticamente conforme as operações de publicação e consumo.
+
+| Elemento            | O que é                                      | Equivalente na analogia                      |
+| ------------------- | -------------------------------------------- | -------------------------------------------- |
+| **Conexão**         | Sessão TCP com o servidor RabbitMQ           | Uma rodovia                                  |
+| **Canal (Channel)** | Subconexão dentro da conexão                 | Uma faixa da rodovia                         |
+| **Fila (Queue)**    | Lugar onde mensagens ficam armazenadas       | Um endereço de entrega                       |
+| **pool_size**       | Quantas “faixas” simultâneas o app pode usar | Quantos carros podem trafegar ao mesmo tempo |
 
 ---
 

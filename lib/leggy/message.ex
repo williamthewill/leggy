@@ -9,7 +9,7 @@ defmodule Leggy.Message do
   - rejeição (`AMQP.Basic.reject/3`)
 
   É utilizado internamente por:
-  - `Leggy.get/1` (modo **polling**)
+  - função `get/1` (modo **polling**) definida em módulos que usam `Leggy`
   - `Leggy.Consumer` (modo **streaming**)
   """
 
